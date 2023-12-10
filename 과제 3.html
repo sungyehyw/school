@@ -1,0 +1,167 @@
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        canvas { border: 1px solid #000000; }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.1.2/socket.io.js"></script>
+    <script>
+        $(document).ready(function () {
+            let color = 'black';
+            let width = 5;
+            let isDrawing = false;
+            let context, canvas;
+            let socket = io.connect('http://your-server-url'); // 서버 URL을 지정해야 합니다.
+
+            function setupCanvas() {
+                canvas = document.getElementById('canvas');
+                context = canvas.getContext('2d');
+
+                $(canvas).mousedown(function (e) {
+                    isDrawing = true;
+                    context.beginPath();
+                    context.moveTo(e.pageX - canvas.offsetLeft, e.pageY - canvas.offsetTop);
+                });
+
+                $(canvas).mousemove(function (e) {
+                    if (!isDrawing) return;
+                    context.lineTo(e.pageX - canvas.offsetLeft, e.pageY - canvas.offsetTop);
+                    context.lineWidth = width;
+                    context.strokeStyle = color;
+                    context.lineCap = 'round';
+                    context.stroke();
+
+                    // 그림을 그릴 때마다 서버에 데이터 전송
+                    socket.emit('drawing', {
+                        x: e.pageX - canvas.offsetLeft,
+                        y: e.pageY - canvas.offsetTop,
+                        color: color,
+                        width: width
+                    });
+                });
+
+                $(canvas).mouseup(function () {
+                    isDrawing = false;
+                });
+
+                $(canvas).mouseleave(function () {
+                    isDrawing = false;
+                });
+
+                // 서버에서 받은 데이터로 그림 그리기
+                socket.on('drawing', function (data) {
+                    context.beginPath();
+                    context.moveTo(data.x, data.y);
+                    context.lineWidth = data.width;
+                    context.strokeStyle = data.color;
+                    context.lineCap = 'round';
+                    context.lineTo(data.x, data.y);
+                    context.stroke();
+                });
+            }
+
+            setupCanvas();
+
+            $('#pen').click(function () {
+                color = $('#colorPicker').val();
+                width = $('#penWidth').val();
+            });
+
+            $('#eraser').click(function () {
+                color = 'white';
+                width = $('#penWidth').val();
+            });
+
+            $('#colorPicker').change(function () {
+                color = $(this).val();
+            });
+
+            $('#penWidth').change(function () {
+                width = $(this).val();
+            });
+
+            $('#saveButton').click(function () {
+                const imgData = canvas.toDataURL('image/png');
+                const link = document.createElement('a');
+                link.href = imgData;
+                link.download = 'my_drawing.png';
+                link.click();
+            });
+
+            // 채팅 관련 코드
+            $('#chatForm').submit(function (e) {
+                e.preventDefault();
+                const message = $('#chatInput').val();
+                if (message.trim() !== '') {
+                    socket.emit('chatMessage', { message: message });
+                    $('#chatInput').val('');
+                }
+            });
+
+            socket.on('chatMessage', function (data) {
+                $('#chatMessages').append('<p>' + data.message + '</p>');
+            });
+        });
+    </script>
+    <script>
+        const express = require('express');
+const http = require('http');
+const socketIO = require('socket.io');
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIO(server);
+
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static('public'));
+
+io.on('connection', (socket) => {
+    console.log('A user connected');
+
+    // Drawing event
+    socket.on('drawing', (data) => {
+        socket.broadcast.emit('drawing', data);
+    });
+
+    // Chat message event
+    socket.on('chatMessage', (data) => {
+        io.emit('chatMessage', data);
+    });
+
+    socket.on('disconnect', () => {
+        console.log('A user disconnected');
+    });
+});
+
+server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});
+    </script>
+</head>
+<body>
+    <button id="pen">펜</button>
+    <button id="eraser">지우개</button>
+    <label for="penWidth"></label>
+    <input type="range" id="penWidth" min="1" max="20" value="5" />
+    <input type="color" id="colorPicker" value="#000000">
+    <button id="saveButton">Save Drawing</button>
+    <br/>
+    <canvas id="canvas" width="800" height="600"></canvas>
+</html>
+<!-- 채팅 관련 요소 추가 -->
+<div id="chat">
+    <form id="chatForm">
+        <input type="text" id="chatInput" placeholder="Type your message">
+        <button type="submit">Send</button>
+    </form>
+    <div id="chatMessages"></div>
+</div>
+
+<!-- 채팅 관련 소켓 초기화 -->
+<script>
+    const socket = io.connect('http://localhost:3000'); // 서버 URL을 업데이트하세요.
+</script>
